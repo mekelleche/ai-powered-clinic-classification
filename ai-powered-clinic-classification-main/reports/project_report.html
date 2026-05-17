@@ -1,0 +1,691 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>AI-Powered Clinical Classification System - Project Report</title>
+    <style>
+      @page {
+        size: A4;
+        margin: 18mm 16mm;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        color: #172033;
+        background: #ffffff;
+        font-family: "Segoe UI", Arial, sans-serif;
+        line-height: 1.48;
+        font-size: 10.5pt;
+      }
+      h1, h2, h3 {
+        color: #0f3557;
+        line-height: 1.2;
+        margin: 0 0 8px;
+      }
+      h1 {
+        font-size: 28pt;
+        letter-spacing: 0;
+      }
+      h2 {
+        font-size: 17pt;
+        margin-top: 24px;
+        padding-bottom: 6px;
+        border-bottom: 2px solid #dbe7f3;
+      }
+      h3 {
+        font-size: 12.5pt;
+        margin-top: 16px;
+      }
+      p {
+        margin: 0 0 9px;
+      }
+      ul, ol {
+        margin: 6px 0 10px 20px;
+        padding: 0;
+      }
+      li {
+        margin-bottom: 4px;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 10px 0 14px;
+        font-size: 9.4pt;
+      }
+      th, td {
+        border: 1px solid #cfdbe8;
+        padding: 7px 8px;
+        vertical-align: top;
+      }
+      th {
+        background: #eef5fb;
+        color: #0f3557;
+        text-align: left;
+      }
+      code {
+        font-family: Consolas, "Courier New", monospace;
+        background: #f2f6fa;
+        border: 1px solid #dbe7f3;
+        padding: 1px 4px;
+        border-radius: 3px;
+      }
+      .cover {
+        min-height: 235mm;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        border-left: 8px solid #0e7490;
+        padding-left: 26px;
+      }
+      .subtitle {
+        color: #3d647f;
+        font-size: 14pt;
+        margin-top: 10px;
+      }
+      .meta {
+        margin-top: 30px;
+        color: #516579;
+      }
+      .pill-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 20px;
+      }
+      .pill {
+        border: 1px solid #b7d2e6;
+        background: #eef8fb;
+        color: #0f5f75;
+        border-radius: 999px;
+        padding: 5px 10px;
+        font-size: 9pt;
+        font-weight: 600;
+      }
+      .page-break {
+        page-break-before: always;
+      }
+      .callout {
+        border-left: 4px solid #0e7490;
+        background: #f4fbfd;
+        padding: 10px 12px;
+        margin: 10px 0 14px;
+      }
+      .two-col {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 14px;
+      }
+      .card {
+        border: 1px solid #dbe7f3;
+        border-radius: 8px;
+        padding: 10px 12px;
+        background: #fbfdff;
+      }
+      .small {
+        font-size: 9.2pt;
+        color: #475569;
+      }
+      .figure {
+        margin: 12px 0 16px;
+        text-align: center;
+        page-break-inside: avoid;
+      }
+      .figure img {
+        max-width: 100%;
+        max-height: 135mm;
+        border: 1px solid #cfdbe8;
+        border-radius: 6px;
+      }
+      .figure-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+        margin-top: 8px;
+      }
+      .caption {
+        font-size: 8.8pt;
+        color: #52677a;
+        margin-top: 5px;
+      }
+      .toc a {
+        color: #0f5f75;
+        text-decoration: none;
+      }
+      .footer-note {
+        color: #64748b;
+        font-size: 9pt;
+        margin-top: 18px;
+      }
+    </style>
+  </head>
+  <body>
+    <section class="cover">
+      <h1>AI-Powered Clinical Classification System</h1>
+      <p class="subtitle">Integrated Project Report: Anemia, Diabetes, and Leukemia Prediction</p>
+      <div class="pill-row">
+        <span class="pill">Machine Learning</span>
+        <span class="pill">Deep Learning</span>
+        <span class="pill">Clinical Decision Support</span>
+        <span class="pill">Web Application</span>
+        <span class="pill">Explainable AI</span>
+      </div>
+      <div class="meta">
+        <p><strong>Project repository:</strong> ai-powered-clinic-classification</p>
+        <p><strong>Main application:</strong> <code>web_app.py</code></p>
+      </div>
+      <p class="footer-note">
+        This document describes the problem, historical methods, proposed solution, theoretical background,
+        implementation choices, model workflows, and practical limitations of the project.
+      </p>
+    </section>
+
+    <section class="page-break toc">
+      <h2>Table of Contents</h2>
+      <ol>
+        <li><a href="#executive-summary">Executive Summary</a></li>
+        <li><a href="#problem">Clinical Problem and Motivation</a></li>
+        <li><a href="#old-methods">Traditional and Older Approaches</a></li>
+        <li><a href="#solution">Proposed Solution</a></li>
+        <li><a href="#datasets">Data Sources and Target Definitions</a></li>
+        <li><a href="#theory">Theoretical Methods Used</a></li>
+        <li><a href="#implementation">Programming and System Implementation</a></li>
+        <li><a href="#workflow">End-to-End Workflow</a></li>
+        <li><a href="#evaluation">Evaluation, Explainability, and Safety</a></li>
+        <li><a href="#limitations">Limitations and Future Work</a></li>
+      </ol>
+    </section>
+
+    <section id="executive-summary" class="page-break">
+      <h2>1. Executive Summary</h2>
+      <p>
+        The project implements an AI-powered clinical classification platform that supports three diagnostic
+        prediction tasks: anemia classification from blood test markers, diabetes status classification from
+        health indicators, and leukemia image classification from microscopic blood smear images. The system
+        combines classical machine learning pipelines with deep learning image models and exposes them through
+        a single browser-based interface.
+      </p>
+      <p>
+        The anemia and diabetes models are structured-data classifiers based on tabular clinical features.
+        They use preprocessing steps such as missing-value imputation, feature scaling, stratified data
+        splitting, and Random Forest classification. The leukemia module is image-based and uses a deep learning
+        ensemble trained from blood-cell image datasets. It includes a blood-smear validator, EfficientNet-B5,
+        EfficientNet-B4, test-time augmentation, probability ensembling, and Grad-CAM visual explanations.
+      </p>
+      <div class="callout">
+        <strong>Main contribution:</strong> the project turns separate clinical prediction models into a unified
+        local decision-support web application where a user can switch between diseases, enter values manually,
+        upload CSV files, extract anemia-related CBC markers from images using OCR, and analyze leukemia smear
+        images with visual focus maps.
+      </div>
+    </section>
+
+    <section id="problem">
+      <h2>2. Clinical Problem and Motivation</h2>
+      <p>
+        Clinical classification is a recurring task in healthcare. Physicians often need to interpret laboratory
+        markers, patient health indicators, or medical images to determine whether a patient is healthy, at risk,
+        or affected by a disease. This process can be time-consuming and sensitive to workload, human variability,
+        incomplete data, and the availability of specialists.
+      </p>
+      <h3>2.1 Anemia</h3>
+      <p>
+        Anemia can arise from different causes such as iron deficiency, folate deficiency, vitamin B12 deficiency,
+        or hemoglobin-related abnormalities. Complete blood count parameters and nutritional biomarkers contain
+        useful signals, but interpreting them manually requires experience and consistent reference analysis.
+      </p>
+      <h3>2.2 Diabetes</h3>
+      <p>
+        Diabetes and prediabetes are often associated with demographic, lifestyle, and health indicators. Early
+        screening can help identify risk before complications appear. However, large health-indicator datasets
+        contain many correlated variables and imbalanced classes, making manual rule-based classification limited.
+      </p>
+      <h3>2.3 Leukemia</h3>
+      <p>
+        Leukemia detection from microscopic blood images requires visual inspection of cell morphology. This task
+        is highly specialized, and errors may have serious consequences. A model that highlights suspicious image
+        regions can support screening, triage, and education, but it must remain explainable and must not replace
+        expert medical review.
+      </p>
+    </section>
+
+    <section id="old-methods">
+      <h2>3. Traditional and Older Approaches</h2>
+      <p>
+        Before machine learning integration, clinical classification was commonly performed through rule-based
+        interpretation, manual thresholds, visual inspection, and isolated laboratory systems.
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th>Approach</th>
+            <th>Typical Use</th>
+            <th>Limitations</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Manual threshold rules</td>
+            <td>Classifying CBC values or diabetes indicators using fixed clinical cutoffs.</td>
+            <td>Limited ability to combine many weak signals; difficult to personalize; sensitive to missing data.</td>
+          </tr>
+          <tr>
+            <td>Manual microscopy</td>
+            <td>Visual examination of blood smear slides by trained specialists.</td>
+            <td>Requires expert availability; slow at scale; subjective variability can occur.</td>
+          </tr>
+          <tr>
+            <td>Paper or spreadsheet workflows</td>
+            <td>Entering lab values into sheets and comparing against references.</td>
+            <td>Manual entry errors; no automated batch prediction; no reusable model pipeline.</td>
+          </tr>
+          <tr>
+            <td>Single-purpose tools</td>
+            <td>Separate applications for each disease or each data format.</td>
+            <td>Poor integration; repeated user workflows; no unified interface for multiple clinical models.</td>
+          </tr>
+        </tbody>
+      </table>
+      <p>
+        These older approaches are still important clinically, but they do not fully exploit modern data-driven
+        pattern recognition. The goal of this project is not to replace medical judgment, but to provide a
+        structured, repeatable, and explainable decision-support layer.
+      </p>
+    </section>
+
+    <section id="solution" class="page-break">
+      <h2>4. Proposed Solution</h2>
+      <p>
+        The project proposes a local web application that hosts multiple models behind a common API. The interface
+        allows the user to choose a model, inspect required features, provide input manually or through file upload,
+        and receive predictions with class probabilities.
+      </p>
+      <div class="two-col">
+        <div class="card">
+          <h3>Anemia Module</h3>
+          <p>
+            A scikit-learn pipeline predicts anemia categories from CBC and nutrition markers. It supports manual
+            entry, CSV batch processing, and optional OCR extraction from report images.
+          </p>
+        </div>
+        <div class="card">
+          <h3>Diabetes Module</h3>
+          <p>
+            A Random Forest classifier predicts no diabetes, prediabetes, or diabetes from structured health
+            indicators using a reusable joblib model bundle.
+          </p>
+        </div>
+        <div class="card">
+          <h3>Leukemia Module</h3>
+          <p>
+            A deep learning image pipeline analyzes blood smear images with a validator and an EfficientNet
+            ensemble. It returns probabilities and Grad-CAM focus maps for interpretability.
+          </p>
+        </div>
+        <div class="card">
+          <h3>Unified Web Interface</h3>
+          <p>
+            The application is served by a Python HTTP server and a JavaScript frontend. Model metadata drives
+            dynamic forms and model-specific views.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section id="datasets">
+      <h2>5. Data Sources and Target Definitions</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Model</th>
+            <th>Dataset / Source Files</th>
+            <th>Input Type</th>
+            <th>Target Classes</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Anemia</td>
+            <td><code>dataset/SKILICARSLAN_Anemia_DataSet.xlsx</code></td>
+            <td>Tabular CBC and nutrition markers</td>
+            <td>No anemia, mild HGB anemia, iron anemia, folate anemia, B12 anemia</td>
+          </tr>
+          <tr>
+            <td>Diabetes</td>
+            <td><code>dataset/diabetes_012_health_indicators_BRFSS2021.csv</code></td>
+            <td>Tabular health indicators</td>
+            <td>No diabetes, prediabetes, diabetes</td>
+          </tr>
+          <tr>
+            <td>Leukemia</td>
+            <td><code>lekumiai_train.ipynb</code> and trained weights in <code>lekumiai_model/</code></td>
+            <td>Microscopic blood smear images</td>
+            <td>Normal, leukemia suspected, uncertain, invalid image</td>
+          </tr>
+        </tbody>
+      </table>
+      <p>
+        The structured models serialize their complete training pipelines as joblib bundles. Each bundle contains
+        the pipeline, feature names, class metadata, a negative-class identifier, and training metrics. The
+        leukemia module stores PyTorch model weights separately as <code>.pth</code> files.
+      </p>
+      <p>
+        The leukemia training notebook builds the image dataset from C-NMC Leukemia, ALL 4-Class cancer images,
+        WBC normal-cell images, and Intel scene images for the image validator. The final classification dataframe
+        contains 30,536 images: 20,534 normal images and 10,002 leukemia images, split into 21,375 training images,
+        4,580 validation images, and 4,581 test images.
+      </p>
+    </section>
+
+    <section id="theory" class="page-break">
+      <h2>6. Theoretical Methods Used</h2>
+
+      <h3>6.1 Data Cleaning and Feature Preparation</h3>
+      <p>
+        The tabular models convert feature columns to numeric values, remove target leakage columns, and keep
+        only records with valid targets. Missing numeric features are handled using median imputation. This
+        reduces the impact of incomplete records and allows prediction even when some input fields are empty.
+      </p>
+
+      <h3>6.2 Stratified Train-Test Splitting</h3>
+      <p>
+        Both structured-data training scripts use stratified train-test splitting. Stratification preserves the
+        class distribution across training and test sets, which is especially important in medical classification
+        where positive or minority cases may be underrepresented.
+      </p>
+
+      <h3>6.3 Standardization</h3>
+      <p>
+        The tabular pipelines apply <code>StandardScaler</code> after imputation. Standardization transforms each
+        feature into a comparable numerical scale. While Random Forests are not as scale-sensitive as linear
+        models, scaling keeps the preprocessing pipeline consistent and reusable.
+      </p>
+
+      <h3>6.4 Class Imbalance Handling</h3>
+      <p>
+        Medical datasets often contain many more normal cases than disease cases. The anemia pipeline uses
+        SMOTE, which synthetically oversamples minority classes by interpolating between existing minority
+        samples. Both anemia and diabetes Random Forest models also use class weights to increase the importance
+        of clinically significant minority classes.
+      </p>
+
+      <h3>6.5 Random Forest Classification</h3>
+      <p>
+        Random Forest is an ensemble of decision trees. Each tree learns decision rules from bootstrapped data and
+        a subset of features, and the final prediction is obtained by voting across trees. It is useful for
+        tabular healthcare data because it can capture nonlinear feature interactions, handle mixed feature
+        importance patterns, and provide robust performance without requiring a very large neural network.
+      </p>
+
+      <h3>6.6 Deep Learning for Image Classification</h3>
+      <p>
+        The leukemia module uses convolutional neural network backbones from the <code>timm</code> library.
+        Convolutional layers learn spatial filters that detect edges, textures, cellular structures, and
+        higher-level morphology. EfficientNet-B5 and EfficientNet-B4 are used as complementary classifiers,
+        while MobileNetV3-Small is used as a lightweight image validator.
+      </p>
+
+      <h3>6.7 Transfer Learning</h3>
+      <p>
+        Transfer learning starts from architectures that are already effective for image recognition and adapts
+        them to blood-cell image classification. This is useful when medical image datasets are smaller than
+        general image datasets. The final classifier heads are trained for the leukemia task.
+      </p>
+
+      <h3>6.8 Ensemble Prediction</h3>
+      <p>
+        The leukemia decision combines EfficientNet-B5 and EfficientNet-B4 probabilities. The implementation
+        gives a larger weight to B5 and a smaller weight to B4. Ensemble prediction reduces dependence on a
+        single model and can improve stability when image quality varies.
+      </p>
+
+      <h3>6.9 Test-Time Augmentation</h3>
+      <p>
+        Test-time augmentation evaluates several transformed versions of the same image, such as flips, rotations,
+        and center crops. The probabilities are averaged. This helps make the prediction less sensitive to slide
+        orientation and minor acquisition differences.
+      </p>
+
+      <h3>6.10 Grad-CAM Explainability</h3>
+      <p>
+        Grad-CAM, or Gradient-weighted Class Activation Mapping, uses gradients flowing into a convolutional layer
+        to identify image regions that influenced the model output. The project displays Grad-CAM maps for the
+        leukemia validator and both classifier models, helping users inspect what image zones contributed to the
+        decision.
+      </p>
+
+      <h3>6.11 Leukemia Model Training Workflow</h3>
+      <p>
+        <code>lekumiai_train.ipynb</code> contains the complete leukemia training workflow, not only final plots.
+        It downloads and organizes image datasets, builds labels and splits, defines preprocessing and augmentation,
+        trains the blood-smear validator, trains the EfficientNet classifiers, calibrates thresholds, saves model
+        weights, and exports evaluation figures.
+      </p>
+      <p>
+        A MobileNetV3-Small validator is trained first to separate valid blood-smear images from unrelated images.
+        Its validator dataset uses blood-smear samples as the positive class and Intel scene images as negative
+        examples, allowing the deployed application to reject invalid uploads before running leukemia inference.
+      </p>
+      <p>
+        The classifier stage uses transfer learning with EfficientNet-B5 as the main model and EfficientNet-B4 as
+        a complementary ensemble model. EfficientNet-B5 includes an attention gate and a multi-layer classifier
+        head. Training uses AdamW, cosine learning-rate scheduling, weighted focal loss, label smoothing, gradient
+        clipping, automatic mixed precision, weighted sampling, early stopping, and MixUp during part of training.
+      </p>
+      <p>
+        The image pipeline resizes and normalizes inputs, then uses strong augmentation: horizontal and vertical
+        flips, rotations, brightness and contrast changes, hue and saturation shifts, CLAHE, RGB shifts, noise,
+        blur, geometric distortion, coarse dropout, and gamma variation. Blood-cell images also receive CLAHE plus
+        Gaussian blur preprocessing where appropriate.
+      </p>
+      <p>
+        After training, the notebook calibrates B5, B4, and ensemble thresholds on the validation set using
+        F2-score maximization. The deployed leukemia decision combines EfficientNet-B5 and EfficientNet-B4 with
+        test-time augmentation before returning probability, confidence status, and Grad-CAM explanations.
+      </p>
+    </section>
+
+    <section id="implementation" class="page-break">
+      <h2>7. Programming and System Implementation</h2>
+      <h3>7.1 Repository Structure</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>File or Folder</th>
+            <th>Role</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>train_model.py</code></td>
+            <td>Trains the anemia model and saves <code>model/anemia_model.joblib</code>.</td>
+          </tr>
+          <tr>
+            <td><code>train_diabetes_model.py</code></td>
+            <td>Trains the diabetes model and saves <code>model/diabetes_model.joblib</code>.</td>
+          </tr>
+          <tr>
+            <td><code>lekumiai_train.ipynb</code></td>
+            <td>Notebook used to train the leukemia image validator and EfficientNet classifiers.</td>
+          </tr>
+          <tr>
+            <td><code>api.py</code></td>
+            <td>Contains model services, prediction logic, OCR extraction, leukemia image inference, and Grad-CAM generation.</td>
+          </tr>
+          <tr>
+            <td><code>web_app.py</code></td>
+            <td>Runs the local HTTP server and exposes model endpoints.</td>
+          </tr>
+          <tr>
+            <td><code>web/index.html</code>, <code>web/app.js</code>, <code>web/styles.css</code></td>
+            <td>Implement the frontend interface, dynamic model selection, manual input forms, CSV processing, image upload, and result rendering.</td>
+          </tr>
+          <tr>
+            <td><code>lekumiai_model/</code></td>
+            <td>Stores trained leukemia weights and evaluation figures such as confusion matrix, ROC, PR, training history, and Grad-CAM.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>7.2 Backend API Design</h3>
+      <p>
+        The backend uses Python's built-in <code>ThreadingHTTPServer</code>. The server defines REST-like
+        endpoints under <code>/api</code>. Model services are created through <code>create_multi_model_api</code>.
+        Each model key maps to either a tabular <code>ModelService</code> or a specialized
+        <code>LeukemiaImageService</code>.
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th>Endpoint</th>
+            <th>Purpose</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>GET /api/models</code></td>
+            <td>Returns available model metadata for the dropdown.</td>
+          </tr>
+          <tr>
+            <td><code>GET /api/model-info?model=...</code></td>
+            <td>Returns features, classes, title, description, and supported input modes.</td>
+          </tr>
+          <tr>
+            <td><code>POST /api/predict</code></td>
+            <td>Runs a single tabular prediction.</td>
+          </tr>
+          <tr>
+            <td><code>POST /api/predict-batch</code></td>
+            <td>Runs multiple tabular predictions from manual batch or CSV rows.</td>
+          </tr>
+          <tr>
+            <td><code>POST /api/extract-from-image</code></td>
+            <td>Uses OCR to extract anemia-related CBC markers from an uploaded report image.</td>
+          </tr>
+          <tr>
+            <td><code>POST /api/predict-image</code></td>
+            <td>Runs leukemia image prediction and returns Grad-CAM focus maps.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>7.3 Frontend Implementation</h3>
+      <p>
+        The frontend is written in plain HTML, CSS, and JavaScript. It dynamically builds input forms based on
+        model metadata returned by the API. For tabular models, it renders numeric fields and supports CSV upload.
+        For the leukemia model, it hides tabular controls and shows a blood smear image upload workflow with a
+        preview, scanner overlay, prediction result, probability details, and Grad-CAM maps.
+      </p>
+
+      <h3>7.4 Model Serialization</h3>
+      <p>
+        The anemia and diabetes models are stored as joblib bundles containing preprocessing and classification
+        steps. This makes inference consistent with training. The leukemia model is stored as separate PyTorch
+        state dictionaries: <code>best_validator.pth</code>, <code>best_b5.pth</code>, and <code>best_b4.pth</code>.
+      </p>
+    </section>
+
+    <section id="workflow">
+      <h2>8. End-to-End Workflow</h2>
+      <ol>
+        <li>The user starts the server with <code>python web_app.py</code>.</li>
+        <li>The browser loads <code>web/index.html</code> and calls <code>/api/models</code>.</li>
+        <li>The user selects anemia, diabetes, or leukemia.</li>
+        <li>The frontend calls <code>/api/model-info</code> and adapts the input view.</li>
+        <li>For anemia and diabetes, numeric input or CSV rows are converted to samples and sent to the tabular prediction endpoint.</li>
+        <li>For anemia OCR, a report image is read by EasyOCR and matched against known CBC aliases.</li>
+        <li>For leukemia, the uploaded smear image is sent as base64 to the image prediction endpoint.</li>
+        <li>The backend loads the correct model, computes probabilities, formats the result, and returns explanations when available.</li>
+        <li>The frontend renders the diagnosis badge, predicted class, probability details, and Grad-CAM maps.</li>
+      </ol>
+    </section>
+
+    <section id="evaluation" class="page-break">
+      <h2>9. Evaluation, Explainability, and Safety</h2>
+      <h3>9.1 Evaluation Metrics</h3>
+      <p>
+        The structured models save accuracy, macro F1-score, confusion matrix, test set count, and class counts.
+        Macro F1 is important because it treats each class more equally than simple accuracy, which can be
+        misleading in imbalanced medical datasets. For leukemia, the final notebook test run reports Ensemble +
+        TTA accuracy of 87.62%, recall or sensitivity of 99.86%, precision of 72.29%, F1-score of 83.87%,
+        F2-score of 92.79%, specificity of 81.80%, AUC-ROC of 0.9500, and only 2 false negatives on the test set.
+        The leukemia notebook also produces ROC and precision-recall curves, confusion matrix, and training
+        history plots.
+      </p>
+
+      <div class="figure-row">
+        <div class="figure">
+          <img src="../lekumiai_model/confusion_matrix_ensemble.png" alt="Leukemia confusion matrix" />
+          <div class="caption">Leukemia ensemble confusion matrix generated during model evaluation.</div>
+        </div>
+        <div class="figure">
+          <img src="../lekumiai_model/roc_curve_ensemble.png" alt="Leukemia ROC curve" />
+          <div class="caption">ROC curve comparing ensemble and individual leukemia classifiers.</div>
+        </div>
+      </div>
+
+      <div class="figure-row">
+        <div class="figure">
+          <img src="../lekumiai_model/pr_curve.png" alt="Leukemia PR curve" />
+          <div class="caption">Precision-recall curve for the leukemia image model.</div>
+        </div>
+        <div class="figure">
+          <img src="../lekumiai_model/training_history_b5.png" alt="EfficientNet-B5 training history" />
+          <div class="caption">Training history for the EfficientNet-B5 leukemia classifier.</div>
+        </div>
+      </div>
+
+      <h3>9.2 Explainability</h3>
+      <p>
+        Explainability is essential for clinical software. For structured models, the application reports class
+        probabilities. For leukemia image classification, the application displays Grad-CAM overlays that show
+        the image areas used by each model.
+      </p>
+      <div class="figure">
+        <img src="../lekumiai_model/gradcam_b5.png" alt="EfficientNet-B5 Grad-CAM examples" />
+        <div class="caption">Example Grad-CAM visualization for EfficientNet-B5 from the leukemia training workflow.</div>
+      </div>
+
+      <h3>9.3 Safety Considerations</h3>
+      <p>
+        The system is a decision-support prototype. It should not be used as a standalone diagnostic authority.
+        Clinical validation, external testing, regulatory review, bias analysis, and physician oversight are
+        required before any real-world medical use.
+      </p>
+    </section>
+
+    <section id="limitations">
+      <h2>10. Limitations and Future Work</h2>
+      <h3>10.1 Current Limitations</h3>
+      <ul>
+        <li>The project runs locally and depends on the availability of Python and required libraries.</li>
+        <li>The leukemia model requires PyTorch, timm, and image-processing dependencies.</li>
+        <li>The tabular models rely on the distribution and quality of the available datasets.</li>
+        <li>OCR extraction may fail on unclear report images or unfamiliar laboratory formats.</li>
+        <li>Grad-CAM is an interpretability aid, not a proof of causality.</li>
+        <li>The current interface does not implement authentication, audit logging, or hospital-system integration.</li>
+      </ul>
+
+      <h3>10.2 Future Improvements</h3>
+      <ul>
+        <li>Add external validation datasets for all three disease modules.</li>
+        <li>Add calibration analysis and probability calibration, especially for clinical thresholds.</li>
+        <li>Introduce model versioning and a reproducible experiment registry.</li>
+        <li>Add unit tests and integration tests for the API and frontend workflows.</li>
+        <li>Improve OCR with layout-aware parsing for laboratory report templates.</li>
+        <li>Add exportable PDF reports for individual predictions, including Grad-CAM images.</li>
+        <li>Implement user roles, secure storage, and privacy controls if deployed beyond a local prototype.</li>
+      </ul>
+
+      <h3>10.3 Conclusion</h3>
+      <p>
+        This project demonstrates how classical machine learning, deep learning, web programming, and explainable
+        AI can be combined into a unified clinical prediction platform. It improves over older isolated and manual
+        workflows by providing reusable preprocessing pipelines, dynamic model selection, batch processing,
+        image-based leukemia classification, and visual interpretability. The result is a practical prototype for
+        AI-assisted clinical classification, while still requiring careful medical validation before clinical use.
+      </p>
+    </section>
+  </body>
+</html>

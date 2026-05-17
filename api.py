@@ -4,6 +4,7 @@ import joblib
 import numpy as np
 import pandas as pd
 import base64
+import os
 import re
 from io import BytesIO
 
@@ -13,20 +14,54 @@ class ModelService:
         self.model_path = model_path
         self.supports_ocr = supports_ocr
         self.bundle = None
-        self._reader = None
+        self._easyocr_reader = None
+        self._ocr_backend = os.getenv("OCR_BACKEND", "auto").strip().lower()
 
     def get_ocr_reader(self):
         if not self.supports_ocr:
             raise RuntimeError("OCR is only available for the anemia model.")
-        if self._reader is None:
+        if self._easyocr_reader is None:
             try:
                 import easyocr
             except ImportError as exc:
                 raise RuntimeError(
                     "OCR dependencies are not installed. Install requirements-ocr.txt to enable image extraction."
                 ) from exc
-            self._reader = easyocr.Reader(['en'])
-        return self._reader
+            self._easyocr_reader = easyocr.Reader(["en"])
+        return self._easyocr_reader
+
+    def _ocr_text_easyocr(self, img_np):
+        reader = self.get_ocr_reader()
+        results = reader.readtext(img_np)
+        return " ".join(r[1] for r in results).upper()
+
+    def _ocr_text_tesseract(self, pil_img):
+        try:
+            import pytesseract
+        except ImportError as exc:
+            raise RuntimeError(
+                "pytesseract is not installed. Install requirements-ocr.txt to use tesseract OCR."
+            ) from exc
+        text = pytesseract.image_to_string(pil_img, lang="eng")
+        return text.upper()
+
+    def _extract_text(self, pil_img, img_np):
+        backend = self._ocr_backend
+
+        if backend == "easyocr":
+            return self._ocr_text_easyocr(img_np)
+        if backend in {"tesseract", "pytesseract"}:
+            return self._ocr_text_tesseract(pil_img)
+        if backend != "auto":
+            raise RuntimeError(
+                f"Unknown OCR_BACKEND='{self._ocr_backend}'. Use easyocr, tesseract, or auto."
+            )
+
+        # auto: prefer tesseract for lower resource usage, fallback to easyocr
+        try:
+            return self._ocr_text_tesseract(pil_img)
+        except Exception:
+            return self._ocr_text_easyocr(img_np)
 
     def extract_from_image(self, b64: str):
         try:
@@ -35,12 +70,8 @@ class ModelService:
             img_data = base64.b64decode(b64)
             img = Image.open(BytesIO(img_data)).convert('RGB')
             img_np = np.array(img)
-            
-            reader = self.get_ocr_reader()
-            results = reader.readtext(img_np)
-            
-            text_lines = [r[1] for r in results]
-            joined_text = " ".join(text_lines).upper()
+
+            joined_text = self._extract_text(img, img_np)
             
             extracted = {}
             if self.bundle is None:
@@ -48,6 +79,7 @@ class ModelService:
                 
             features = self.bundle["features"]
             aliases = {
+                # Anemia / CBC aliases
                 "WBC": ["WBC", "LEUCOCYTES", "WHITE BLOOD CELLS"],
                 "RBC": ["RBC", "ERYTHROCYTES", "RED BLOOD CELLS"],
                 "HGB": ["HGB", "HB", "HEMOGLOBIN", "HAEMOGLOBIN"],
@@ -67,7 +99,29 @@ class ModelService:
                 "BA#": ["BA#", "BASOPHILS", "BASO", "BASO#"],
                 "FERRITTE": ["FERRITIN", "FERR", "FERRITTE"],
                 "FOLATE": ["FOLATE", "ACIDE FOLIQUE"],
-                "B12": ["B12", "VITAMIN B12", "VIT B12"]
+                "B12": ["B12", "VITAMIN B12", "VIT B12"],
+                # Diabetes model feature aliases
+                "HighBP": ["HIGHBP", "HIGH BP", "HIGH BLOOD PRESSURE", "HYPERTENSION", "BP"],
+                "HighChol": ["HIGHCHOL", "HIGH CHOL", "HIGH CHOLESTEROL", "HYPERCHOLESTEROLEMIA", "CHOLESTEROL"],
+                "CholCheck": ["CHOLCHECK", "CHOL CHECK", "CHOLESTEROL CHECK", "LIPID CHECK"],
+                "BMI": ["BMI", "BODY MASS INDEX"],
+                "Smoker": ["SMOKER", "SMOKING", "TOBACCO", "CIGARETTE"],
+                "Stroke": ["STROKE", "CVA"],
+                "HeartDiseaseorAttack": ["HEARTDISEASEORATTACK", "HEART DISEASE OR ATTACK", "HEART DISEASE", "HEART ATTACK", "MI", "CAD"],
+                "PhysActivity": ["PHYSACTIVITY", "PHYSICAL ACTIVITY", "EXERCISE", "ACTIVE"],
+                "Fruits": ["FRUITS", "FRUIT INTAKE"],
+                "Veggies": ["VEGGIES", "VEGETABLES", "VEGETABLE INTAKE"],
+                "HvyAlcoholConsump": ["HVYALCOHOLCONSUMP", "HEAVY ALCOHOL", "ALCOHOL CONSUMPTION", "ALCOHOL"],
+                "AnyHealthcare": ["ANYHEALTHCARE", "ANY HEALTHCARE", "HEALTH COVERAGE", "HEALTH INSURANCE"],
+                "NoDocbcCost": ["NODOCBCCOST", "NO DOC BC COST", "COULD NOT SEE DOCTOR", "NO DOCTOR COST"],
+                "GenHlth": ["GENHLTH", "GENERAL HEALTH", "OVERALL HEALTH"],
+                "MentHlth": ["MENTHLTH", "MENTAL HEALTH", "MENTAL UNHEALTHY DAYS"],
+                "PhysHlth": ["PHYSHLTH", "PHYSICAL HEALTH", "PHYSICAL UNHEALTHY DAYS"],
+                "DiffWalk": ["DIFFWALK", "DIFFICULTY WALKING", "WALKING DIFFICULTY", "MOBILITY LIMITATION"],
+                "Sex": ["SEX", "GENDER"],
+                "Age": ["AGE"],
+                "Education": ["EDUCATION", "EDUC LEVEL", "SCHOOLING"],
+                "Income": ["INCOME", "HOUSEHOLD INCOME"],
             }
             
             for f in features:

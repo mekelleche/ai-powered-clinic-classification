@@ -21,7 +21,7 @@ MODEL_CONFIGS = {
         "path": REPO_ROOT / "model" / "diabetes_model.joblib",
         "title": "Diabetes Status Classifier",
         "description": "Predicts no diabetes, prediabetes, or diabetes from health indicators.",
-        "supports_ocr": False,
+        "supports_ocr": True,
     },
 }
 

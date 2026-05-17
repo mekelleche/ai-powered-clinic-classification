@@ -1,0 +1,10 @@
+numpy
+pandas
+scikit-learn
+openpyxl
+joblib
+imbalanced-learn
+Pillow
+torch
+timm
+opencv-python-headless
