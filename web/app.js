@@ -22,6 +22,12 @@ const ocrPreview = el("ocrPreview");
 const ocrPreviewWrap = el("ocrPreviewWrap");
 const ocrScanOverlay = el("ocrScanOverlay");
 const ocrUploadZone = imageFile.closest(".section-gap");
+const imagePredictionZone = el("imagePredictionZone");
+const imagePredictionFile = el("imagePredictionFile");
+const imagePredictionStatus = el("imagePredictionStatus");
+const imagePredictionPreview = el("imagePredictionPreview");
+const imagePredictionPreviewWrap = el("imagePredictionPreviewWrap");
+const imagePredictionScanOverlay = el("imagePredictionScanOverlay");
 
 // ── Button ripple effect ──────────────────────────────────
 document.querySelectorAll('.btn').forEach(btn => {
@@ -43,11 +49,16 @@ const csvErrors = el("csvErrors");
 const csvResults = el("csvResults");
 const csvTbody = el("csvTbody");
 const btnDownloadResults = el("btnDownloadResults");
+const csvSection = csvFile.closest("section");
+const gradcamSection = el("gradcamSection");
+const gradcamGrid = el("gradcamGrid");
+const gradcamEmpty = el("gradcamEmpty");
 
 const btnPredictBatch = el("btnPredictBatch");
 const btnClearBatch = el("btnClearBatch");
 const batchBox = el("batchBox");
 const batchTbody = el("batchTbody");
+const batchSection = batchBox.closest("section");
 
 const API_BASE = "/api";
 
@@ -58,6 +69,7 @@ let manualInputs = new Map();
 let batch = []; // array of { sample, result? }
 let lastCsvRows = null; // array of objects
 let lastCsvResults = null;
+let imagePredictionB64 = null;
 
 async function apiRequest(path, options = {}) {
   const response = await fetch(`${API_BASE}${path}`, {
@@ -90,12 +102,13 @@ function setModelStatus(kind, text) {
 
 function enableUi() {
   const ok = !!modelInfo;
+  const imageMode = isImagePredictionModel();
   modelSelect.disabled = availableModels.length === 0;
   btnShowFeatures.disabled = !ok;
-  btnPredictManual.disabled = !ok;
-  btnAddToBatch.disabled = !ok;
-  btnPredictCsv.disabled = !ok || !lastCsvRows;
-  btnPredictBatch.disabled = !ok || batch.length === 0;
+  btnPredictManual.disabled = !ok || (imageMode && !imagePredictionB64);
+  btnAddToBatch.disabled = !ok || imageMode;
+  btnPredictCsv.disabled = !ok || imageMode || !lastCsvRows;
+  btnPredictBatch.disabled = !ok || imageMode || batch.length === 0;
   btnClearBatch.disabled = batch.length === 0;
 }
 
@@ -106,6 +119,10 @@ function validateInfoModel(m) {
 
 function getSelectedModelMeta() {
   return availableModels.find((m) => m.key === selectedModelKey) || null;
+}
+
+function isImagePredictionModel() {
+  return !!modelInfo?.supportsImagePrediction;
 }
 
 function resetResults() {
@@ -123,6 +140,11 @@ function resetResults() {
   renderBatchTable();
   ocrStatus.innerHTML = "";
   ocrPreviewWrap.classList.remove("active");
+  imagePredictionB64 = null;
+  imagePredictionStatus.innerHTML = "";
+  imagePredictionFile.value = "";
+  imagePredictionPreviewWrap.classList.remove("active");
+  renderGradcamMaps([]);
 }
 
 function updateModelPresentation() {
@@ -131,8 +153,18 @@ function updateModelPresentation() {
   heroTitle.innerHTML = `AI-Powered <span>${meta.title}</span>`;
   heroDescription.textContent = meta.description || "Predict clinical outcomes from structured health data.";
   const supportsOcr = !!modelInfo?.supportsImageOcr;
+  const imageMode = isImagePredictionModel();
   ocrUploadZone.hidden = !supportsOcr;
   ocrPreviewWrap.style.display = supportsOcr ? "" : "none";
+  imagePredictionZone.hidden = !imageMode;
+  imagePredictionPreviewWrap.style.display = imageMode ? "" : "none";
+  gradcamSection.hidden = !imageMode;
+  featureSearch.hidden = imageMode;
+  csvFile.disabled = imageMode;
+  csvSection.hidden = imageMode;
+  batchSection.hidden = imageMode;
+  btnPredictManual.textContent = imageMode ? "Analyze Image" : "Analyze";
+  btnAddToBatch.hidden = imageMode;
 }
 
 function populateModelSelect(models) {
@@ -164,6 +196,14 @@ function buildManualForm() {
   manualInputs = new Map();
   manualForm.className = ""; // Remove wrapper generic layout
 
+  if (isImagePredictionModel()) {
+    const note = document.createElement("p");
+    note.className = "muted section-gap";
+    note.textContent = "This model uses an image input. Upload a microscopic blood smear image, then run analysis.";
+    manualForm.appendChild(note);
+    return;
+  }
+
   const fnsSet = new Set(["WBC", "NE#", "LY#", "MO#", "EO#", "BA#", "RBC", "HGB", "HCT", "MCV", "MCH", "MCHC", "RDW", "PLT", "MPV", "PCT", "PDW", "SD", "SDTSD", "TSD"]);
 
   const fnsFieldset = document.createElement("fieldset");
@@ -177,6 +217,7 @@ function buildManualForm() {
   const otherForm = otherFieldset.querySelector(".form");
 
   const anemiaLike = modelInfo.features.some((f) => fnsSet.has(f));
+  const diabetesV3Like = modelInfo.features.includes("smoking_history") && modelInfo.features.includes("HbA1c_level");
 
   for (const f of modelInfo.features) {
     const field = document.createElement("div");
@@ -187,16 +228,39 @@ function buildManualForm() {
     left.textContent = f;
 
     const hint = document.createElement("span");
-    hint.textContent = f === "GENDER" ? "0/1" : "";
+    if (f === "GENDER") hint.textContent = "0/1";
+    if (f === "gender") hint.textContent = "female/male or 0/1";
+    if (f === "smoking_history") hint.textContent = "never/current/former/ever/not current/no info";
 
     label.appendChild(left);
     label.appendChild(hint);
 
-    const input = document.createElement("input");
-    input.type = "number";
-    input.inputMode = "decimal";
-    input.step = "any";
-    input.placeholder = "Leave empty for auto-imputation";
+    let input;
+    if (f === "smoking_history" && diabetesV3Like) {
+      input = document.createElement("select");
+      input.innerHTML = `
+        <option value="">Select smoking history</option>
+        <option value="never">never</option>
+        <option value="former">former</option>
+        <option value="current">current</option>
+        <option value="ever">ever</option>
+        <option value="not current">not current</option>
+        <option value="No Info">No Info</option>
+      `;
+    } else if (f === "gender" && diabetesV3Like) {
+      input = document.createElement("select");
+      input.innerHTML = `
+        <option value="">Select gender</option>
+        <option value="female">female</option>
+        <option value="male">male</option>
+      `;
+    } else {
+      input = document.createElement("input");
+      input.type = "number";
+      input.inputMode = "decimal";
+      input.step = "any";
+      input.placeholder = "Leave empty for auto-imputation";
+    }
 
     field.appendChild(label);
     field.appendChild(input);
@@ -218,22 +282,68 @@ function buildManualForm() {
 
 function renderResultCard(container, res) {
   const hasCondition = !!res.hasCondition;
+  const isInvalidSmear = res?.predictedClass?.value === -1;
   const ok = hasCondition ? "badge-bad" : "badge-ok";
-  const msg = hasCondition
-    ? `Prediction: ${res.predictedClass.name}`
-    : `Prediction: ${res.predictedClass.name}`;
+  const msg = `Prediction: ${res.predictedClass.name}`;
   const summary = hasCondition ? "Needs attention" : "Clear";
 
   container.innerHTML = `
     <div class="row" style="justify-content:space-between">
       <div class="big">${msg}</div>
-      <div class="badge ${ok}">${summary}</div>
+      ${isInvalidSmear ? "" : `<div class="badge ${ok}">${summary}</div>`}
     </div>
     <div class="meta">Predicted Class: <strong>${res.predictedClass.name}</strong> (p=${Number(res.probability).toFixed(3)})</div>
-    <div class="meta">Probabilities: ${res.probabilities
+    <div class="meta">Probabilities: ${(res.probabilities || [])
       .map((p) => `${p.name}:${Number(p.p).toFixed(3)}`)
       .join(" • ")}</div>
+    ${res.message ? `<div class="meta">${res.message}</div>` : ""}
+    ${renderResultDetails(res)}
   `;
+}
+
+function renderResultDetails(res) {
+  const d = res.details || {};
+  const parts = [];
+  if (Number.isFinite(d.bloodSmearProbability)) {
+    parts.push(`Blood smear validity:${Number(d.bloodSmearProbability).toFixed(3)}`);
+  }
+  if (Number.isFinite(d.probB5)) parts.push(`B5:${Number(d.probB5).toFixed(3)}`);
+  if (Number.isFinite(d.probB4)) parts.push(`B4:${Number(d.probB4).toFixed(3)}`);
+  if (d.quality) {
+    parts.push(`brightness:${Number(d.quality.brightness).toFixed(0)}`);
+    parts.push(`sharpness:${Number(d.quality.sharpness).toFixed(0)}`);
+  }
+  return parts.length ? `<div class="meta">Details: ${parts.join(" | ")}</div>` : "";
+}
+
+function renderGradcamMaps(explanations) {
+  gradcamGrid.innerHTML = "";
+  const items = (explanations || []).filter((item) => item && (item.image || item.error));
+  gradcamEmpty.hidden = items.length > 0;
+
+  for (const item of items) {
+    const panel = document.createElement("div");
+    panel.className = "gradcam-panel";
+
+    if (item.image) {
+      panel.innerHTML = `
+        <img src="${item.image}" alt="${item.model} Grad-CAM" />
+        <div class="gradcam-caption">
+          <strong>${item.model}</strong>
+          <span>${item.note || ""}${Number.isFinite(item.probability) ? ` | p=${Number(item.probability).toFixed(3)}` : ""}</span>
+        </div>
+      `;
+    } else {
+      panel.innerHTML = `
+        <div class="gradcam-error">Could not generate ${item.model} map.</div>
+        <div class="gradcam-caption">
+          <strong>${item.model}</strong>
+          <span>${item.error || "Grad-CAM unavailable"}</span>
+        </div>
+      `;
+    }
+    gradcamGrid.appendChild(panel);
+  }
 }
 
 function diagnosisBadge(res) {
@@ -248,6 +358,10 @@ function collectManualSample() {
     const input = manualInputs.get(f);
     const raw = input?.value;
     if (raw === "" || raw == null) continue;
+    if (f === "smoking_history" || f === "gender") {
+      sample[f] = String(raw).trim();
+      continue;
+    }
     const n = Number(String(raw).replace(",", "."));
     if (Number.isFinite(n)) sample[f] = n;
   }
@@ -297,6 +411,13 @@ async function predictBatch(samples) {
   return await apiRequest("/predict-batch", {
     method: "POST",
     body: JSON.stringify({ model: selectedModelKey, samples }),
+  });
+}
+
+async function predictImage(b64) {
+  return await apiRequest("/predict-image", {
+    method: "POST",
+    body: JSON.stringify({ model: selectedModelKey, b64 }),
   });
 }
 
@@ -354,6 +475,10 @@ function normalizeCsvRow(row) {
     if (!(f in row)) continue;
     const raw = String(row[f] ?? "").trim();
     if (raw === "") continue;
+    if (f === "smoking_history" || f === "gender") {
+      sample[f] = raw;
+      continue;
+    }
     const n = Number(raw.replace(",", "."));
     if (Number.isFinite(n)) sample[f] = n;
   }
@@ -453,13 +578,27 @@ featureSearch.addEventListener("input", () => {
 
 btnPredictManual.addEventListener("click", async () => {
   try {
-    const sample = collectManualSample();
-    const res = await predictOne(sample);
+    let res;
+    if (isImagePredictionModel()) {
+      if (!imagePredictionB64) return;
+      imagePredictionFile.disabled = true;
+      imagePredictionScanOverlay.classList.add("running");
+      imagePredictionStatus.innerHTML = `<div class="ocr-status-tag scanning">Analyzing blood smear image...</div>`;
+      res = await predictImage(imagePredictionB64);
+      imagePredictionStatus.innerHTML = `<div class="ocr-status-tag success">Image analysis complete.</div>`;
+    } else {
+      const sample = collectManualSample();
+      res = await predictOne(sample);
+    }
     manualResult.hidden = false;
     renderResultCard(manualResult, res);
+    renderGradcamMaps(res.explanations);
   } catch (e) {
     console.error(e);
     alert(e.message || "Make sure the model is connected first.");
+  } finally {
+    imagePredictionFile.disabled = false;
+    imagePredictionScanOverlay.classList.remove("running");
   }
 });
 
@@ -492,6 +631,36 @@ batchTbody.addEventListener("click", (ev) => {
   batch.splice(idx, 1);
   renderBatchTable();
   enableUi();
+});
+
+imagePredictionFile.addEventListener("change", async () => {
+  const f = imagePredictionFile.files?.[0];
+  imagePredictionB64 = null;
+  manualResult.hidden = true;
+  manualResult.innerHTML = "";
+  renderGradcamMaps([]);
+
+  if (!f) {
+    imagePredictionPreviewWrap.classList.remove("active");
+    imagePredictionStatus.innerHTML = "";
+    enableUi();
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const dataUrl = e.target.result;
+    imagePredictionPreview.src = dataUrl;
+    imagePredictionPreviewWrap.classList.add("active");
+    imagePredictionB64 = String(dataUrl).split(",")[1] || String(dataUrl);
+    imagePredictionStatus.innerHTML = `<div class="ocr-status-tag success">Image ready. Click Analyze Image.</div>`;
+    enableUi();
+  };
+  reader.onerror = () => {
+    imagePredictionStatus.innerHTML = `<div class="ocr-status-tag error">Failed to read image file.</div>`;
+    enableUi();
+  };
+  reader.readAsDataURL(f);
 });
 
 imageFile.addEventListener("change", async () => {

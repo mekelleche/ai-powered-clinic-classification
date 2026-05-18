@@ -46,7 +46,7 @@
         <div class="hero-icon">🩸</div>
         <div class="hero-text">
           <h1 id="heroTitle">AI-Powered <span>Clinical Classification</span></h1>
-          <p id="heroDescription">Switch between anemia and diabetes prediction, enter values manually, or upload a CSV for batch analysis.</p>
+          <p id="heroDescription">Switch between anemia, diabetes, and leukemia prediction, enter values manually, upload a CSV, or analyze a blood smear image.</p>
         </div>
       </div>
 
@@ -106,6 +106,19 @@
             <div id="ocrStatus"></div>
           </div>
 
+          <!-- Leukemia image prediction upload -->
+          <div id="imagePredictionZone" class="section-gap" hidden>
+            <label class="upload-zone" for="imagePredictionFile">
+              <input id="imagePredictionFile" type="file" accept="image/*" />
+              <div class="upload-icon">📷</div>
+              <div class="upload-text">
+                <strong>Upload Blood Smear Image</strong>
+                <span>Choose a microscopic blood smear image for leukemia prediction</span>
+              </div>
+            </label>
+            <div id="imagePredictionStatus"></div>
+          </div>
+
           <!-- Image preview with scanner overlay -->
           <div id="ocrPreviewWrap" class="ocr-preview-wrap">
             <img id="ocrPreview" alt="CBC Test Report Preview" />
@@ -120,6 +133,19 @@
             </div>
           </div>
 
+          <div id="imagePredictionPreviewWrap" class="ocr-preview-wrap">
+            <img id="imagePredictionPreview" alt="Blood Smear Preview" />
+            <div id="imagePredictionScanOverlay" class="ocr-scan-overlay">
+              <div class="scan-bar"></div>
+              <div class="scan-label">
+                <div class="scan-dots">
+                  <span></span><span></span><span></span>
+                </div>
+                Analyzing blood smear image
+              </div>
+            </div>
+          </div>
+
           <!-- FNS form fieldsets -->
           <div id="manualForm"></div>
 
@@ -129,6 +155,17 @@
 
         <!-- ── Right: CSV Upload + Batch ────────────────────── -->
         <div style="display:flex; flex-direction:column; gap: 22px;">
+
+          <section id="gradcamSection" class="card" hidden>
+            <div class="card-header">
+              <h2><span class="icon">🧠</span>Model Focus Maps</h2>
+              <span class="pill">Grad-CAM</span>
+            </div>
+            <div id="gradcamEmpty" class="muted">
+              Run leukemia image analysis to view the regions used by each model.
+            </div>
+            <div id="gradcamGrid" class="gradcam-grid"></div>
+          </section>
 
           <!-- CSV Upload -->
           <section class="card">
@@ -164,7 +201,7 @@
                   <tr>
                     <th>Row</th>
                     <th>Diagnosis</th>
-                    <th>Anemia Type</th>
+                    <th>Predicted Class</th>
                     <th>Confidence</th>
                   </tr>
                 </thead>
@@ -192,7 +229,7 @@
                   <tr>
                     <th>#</th>
                     <th>Diagnosis</th>
-                    <th>Anemia Type</th>
+                    <th>Predicted Class</th>
                     <th>Confidence</th>
                     <th></th>
                   </tr>

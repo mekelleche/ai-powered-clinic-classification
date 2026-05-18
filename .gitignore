@@ -2,6 +2,7 @@
 __pycache__/
 myenv/
 model/
+lekumiai_model/
 *.py[codz]
 *$py.class
 .codex

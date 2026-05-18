@@ -18,10 +18,17 @@ MODEL_CONFIGS = {
         "supports_ocr": True,
     },
     "diabetes": {
-        "path": REPO_ROOT / "model" / "diabetes_model.joblib",
+        "path": REPO_ROOT / "model" / "diabetes_model_xgboost.joblib",
         "title": "Diabetes Status Classifier",
-        "description": "Predicts no diabetes, prediabetes, or diabetes from health indicators.",
+        "description": "Predicts diabetes risk (no diabetes vs diabetes) from health indicators.",
         "supports_ocr": True,
+    },
+    "leukemia": {
+        "path": REPO_ROOT / "lekumiai_model",
+        "title": "Leukemia Image Classifier",
+        "description": "Detects suspected leukemia from microscopic blood smear images.",
+        "supports_ocr": False,
+        "type": "leukemia_image",
     },
 }
 
@@ -64,6 +71,11 @@ class AppHandler(BaseHTTPRequestHandler):
             model_key = payload.get("model", "anemia")
             b64 = payload.get("b64", "")
             return self._json_response(HTTPStatus.OK, self.api.extract_from_image(model_key, b64))
+        if parsed.path == "/api/predict-image":
+            payload = self._read_json()
+            model_key = payload.get("model", "leukemia")
+            b64 = payload.get("b64", "")
+            return self._json_response(HTTPStatus.OK, self.api.predict_image(model_key, b64))
         return self._json_response(HTTPStatus.NOT_FOUND, {"error": "Not found"})
 
     def log_message(self, fmt, *args):
@@ -124,7 +136,7 @@ class AppHandler(BaseHTTPRequestHandler):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Anemia classifier web app")
+    parser = argparse.ArgumentParser(description="Clinical classifier web app")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8000)
     args = parser.parse_args()

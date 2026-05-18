@@ -1,1 +1,2 @@
-# ai-powered-clinic-classification
+# ai-powered-clinic-classification 
+# resuelt are explained

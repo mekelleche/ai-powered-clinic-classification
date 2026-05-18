@@ -1,2 +1,0 @@
-easyocr
-opencv-python-headless
