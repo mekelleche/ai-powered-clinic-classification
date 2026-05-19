@@ -3,6 +3,8 @@ __pycache__/
 myenv/
 model/
 lekumiai_model/
+ai-powered-clinic-classification-main/lekumiai_model/
+*.pth
 *.py[codz]
 *$py.class
 .codex
