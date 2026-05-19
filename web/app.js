@@ -64,7 +64,7 @@ const API_BASE = "/api";
 
 let modelInfo = null; // {features, classes}
 let availableModels = [];
-let selectedModelKey = "anemia";
+let selectedModelKey = "combined";
 let manualInputs = new Map();
 let batch = []; // array of { sample, result? }
 let lastCsvRows = null; // array of objects
@@ -103,12 +103,13 @@ function setModelStatus(kind, text) {
 function enableUi() {
   const ok = !!modelInfo;
   const imageMode = isImagePredictionModel();
+  const combinedMode = isCombinedModel();
   modelSelect.disabled = availableModels.length === 0;
   btnShowFeatures.disabled = !ok;
   btnPredictManual.disabled = !ok || (imageMode && !imagePredictionB64);
-  btnAddToBatch.disabled = !ok || imageMode;
-  btnPredictCsv.disabled = !ok || imageMode || !lastCsvRows;
-  btnPredictBatch.disabled = !ok || imageMode || batch.length === 0;
+  btnAddToBatch.disabled = !ok || imageMode || combinedMode;
+  btnPredictCsv.disabled = !ok || imageMode || combinedMode || !lastCsvRows;
+  btnPredictBatch.disabled = !ok || imageMode || combinedMode || batch.length === 0;
   btnClearBatch.disabled = batch.length === 0;
 }
 
@@ -123,6 +124,10 @@ function getSelectedModelMeta() {
 
 function isImagePredictionModel() {
   return !!modelInfo?.supportsImagePrediction;
+}
+
+function isCombinedModel() {
+  return !!modelInfo?.combined;
 }
 
 function resetResults() {
@@ -154,6 +159,7 @@ function updateModelPresentation() {
   heroDescription.textContent = meta.description || "Predict clinical outcomes from structured health data.";
   const supportsOcr = !!modelInfo?.supportsImageOcr;
   const imageMode = isImagePredictionModel();
+  const combinedMode = isCombinedModel();
   ocrUploadZone.hidden = !supportsOcr;
   ocrPreviewWrap.style.display = supportsOcr ? "" : "none";
   imagePredictionZone.hidden = !imageMode;
@@ -162,9 +168,9 @@ function updateModelPresentation() {
   featureSearch.hidden = imageMode;
   csvFile.disabled = imageMode;
   csvSection.hidden = imageMode;
-  batchSection.hidden = imageMode;
+  batchSection.hidden = imageMode || combinedMode;
   btnPredictManual.textContent = imageMode ? "Analyze Image" : "Analyze";
-  btnAddToBatch.hidden = imageMode;
+  btnAddToBatch.hidden = imageMode || combinedMode;
 }
 
 function populateModelSelect(models) {
@@ -204,39 +210,69 @@ function buildManualForm() {
     return;
   }
 
-  const fnsSet = new Set(["WBC", "NE#", "LY#", "MO#", "EO#", "BA#", "RBC", "HGB", "HCT", "MCV", "MCH", "MCHC", "RDW", "PLT", "MPV", "PCT", "PDW", "SD", "SDTSD", "TSD"]);
+  const anemiaCoreSet = new Set(["WBC", "NE#", "LY#", "MO#", "EO#", "BA#", "RBC", "HGB", "HCT", "MCV", "MCH", "MCHC", "RDW", "PLT", "MPV", "PCT", "PDW", "SD", "SDTSD", "TSD"]);
+  const diabetesSet = new Set(["gender", "age", "hypertension", "heart_disease", "smoking_history", "bmi", "HbA1c_level", "blood_glucose_level"]);
+  const sharedAliases = {
+    age: ["Age", "age"],
+    gender: ["GENDER", "gender", "Sex"],
+  };
 
-  const fnsFieldset = document.createElement("fieldset");
-  fnsFieldset.className = "fieldset-group";
-  fnsFieldset.innerHTML = "<legend>Core Indicators</legend><div class='form'></div>";
-  const fnsForm = fnsFieldset.querySelector(".form");
+  const sections = [
+    { name: "Shared Indicators", key: "shared", fields: [] },
+    { name: "Anemia Indicators", key: "anemia_core", fields: [] },
+    { name: "Additional Anemia Indicators", key: "anemia_extra", fields: [] },
+    { name: "Diabetes Indicators", key: "diabetes", fields: [] },
+  ];
+  const sectionMap = Object.fromEntries(sections.map((s) => [s.key, s]));
 
-  const otherFieldset = document.createElement("fieldset");
-  otherFieldset.className = "fieldset-group";
-  otherFieldset.innerHTML = "<legend>Additional Indicators</legend><div class='form'></div>";
-  const otherForm = otherFieldset.querySelector(".form");
+  const featureSet = new Set(modelInfo.features);
+  const addedShared = new Set();
 
-  const anemiaLike = modelInfo.features.some((f) => fnsSet.has(f));
-  const diabetesV3Like = modelInfo.features.includes("smoking_history") && modelInfo.features.includes("HbA1c_level");
+  const registerShared = (canonical, aliases) => {
+    const present = aliases.filter((a) => featureSet.has(a));
+    if (present.length === 0) return;
+    const item = { label: canonical, features: present, kind: canonical === "gender" ? "gender_select" : "number" };
+    sectionMap.shared.fields.push(item);
+    for (const f of present) addedShared.add(f);
+  };
+  registerShared("age", sharedAliases.age);
+  registerShared("gender", sharedAliases.gender);
 
   for (const f of modelInfo.features) {
+    if (addedShared.has(f)) continue;
+    const item = { label: f, features: [f], kind: "number" };
+    if (f === "smoking_history") item.kind = "smoking_select";
+    if (diabetesSet.has(f)) {
+      sectionMap.diabetes.fields.push(item);
+    } else if (anemiaCoreSet.has(f)) {
+      sectionMap.anemia_core.fields.push(item);
+    } else {
+      sectionMap.anemia_extra.fields.push(item);
+    }
+  }
+
+  const createField = (item) => {
     const field = document.createElement("div");
     field.className = "field";
 
     const label = document.createElement("label");
     const left = document.createElement("div");
-    left.textContent = f;
-
+    left.textContent = item.label;
     const hint = document.createElement("span");
-    if (f === "GENDER") hint.textContent = "0/1";
-    if (f === "gender") hint.textContent = "female/male or 0/1";
-    if (f === "smoking_history") hint.textContent = "never/current/former/ever/not current/no info";
-
+    if (item.kind === "gender_select") hint.textContent = "";
+    if (item.kind === "smoking_select") hint.textContent = "";
     label.appendChild(left);
     label.appendChild(hint);
 
     let input;
-    if (f === "smoking_history" && diabetesV3Like) {
+    if (item.kind === "gender_select") {
+      input = document.createElement("select");
+      input.innerHTML = `
+        <option value="">Select gender</option>
+        <option value="female">female</option>
+        <option value="male">male</option>
+      `;
+    } else if (item.kind === "smoking_select") {
       input = document.createElement("select");
       input.innerHTML = `
         <option value="">Select smoking history</option>
@@ -246,13 +282,6 @@ function buildManualForm() {
         <option value="ever">ever</option>
         <option value="not current">not current</option>
         <option value="No Info">No Info</option>
-      `;
-    } else if (f === "gender" && diabetesV3Like) {
-      input = document.createElement("select");
-      input.innerHTML = `
-        <option value="">Select gender</option>
-        <option value="female">female</option>
-        <option value="male">male</option>
       `;
     } else {
       input = document.createElement("input");
@@ -265,19 +294,23 @@ function buildManualForm() {
     field.appendChild(label);
     field.appendChild(input);
 
-    if (anemiaLike && fnsSet.has(f)) {
-      fnsForm.appendChild(field);
-    } else {
-      otherForm.appendChild(field);
+    for (const f of item.features) {
+      manualInputs.set(f, input);
     }
+    return field;
+  };
 
-    manualInputs.set(f, input);
+  for (const section of sections) {
+    if (section.fields.length === 0) continue;
+    const fieldset = document.createElement("fieldset");
+    fieldset.className = "fieldset-group";
+    fieldset.innerHTML = `<legend>${section.name}</legend><div class='form'></div>`;
+    const form = fieldset.querySelector(".form");
+    for (const item of section.fields) {
+      form.appendChild(createField(item));
+    }
+    manualForm.appendChild(fieldset);
   }
-
-  if (anemiaLike) {
-    manualForm.appendChild(fnsFieldset);
-  }
-  manualForm.appendChild(otherFieldset);
 }
 
 function renderResultCard(container, res) {
@@ -298,6 +331,34 @@ function renderResultCard(container, res) {
       .join(" • ")}</div>
     ${res.message ? `<div class="meta">${res.message}</div>` : ""}
     ${renderResultDetails(res)}
+  `;
+}
+
+function renderCombinedResult(container, res) {
+  const parts = [];
+  const entries = Object.entries(res?.results || {});
+  for (const [key, item] of entries) {
+    const title = item?.title || key;
+    if (item?.status === "ok" && item?.result) {
+      const r = item.result;
+      parts.push(`
+        <div class="meta"><strong>${title}</strong>: ${r.predictedClass.name} (p=${Number(r.probability).toFixed(3)})</div>
+      `);
+    } else if (item?.status === "incomplete") {
+      parts.push(`
+        <div class="meta"><strong>${title}</strong>: Incomplete input. Missing: ${item.missingFeatures.join(", ")}</div>
+      `);
+    } else {
+      parts.push(`
+        <div class="meta"><strong>${title}</strong>: Not run (no model-specific features provided).</div>
+      `);
+    }
+  }
+  container.innerHTML = `
+    <div class="row" style="justify-content:space-between">
+      <div class="big">Combined Prediction Results</div>
+    </div>
+    ${parts.join("")}
   `;
 }
 
@@ -360,6 +421,16 @@ function collectManualSample() {
     if (raw === "" || raw == null) continue;
     if (f === "smoking_history" || f === "gender") {
       sample[f] = String(raw).trim();
+      continue;
+    }
+    if (f === "GENDER" || f === "Sex") {
+      const txt = String(raw).trim().toLowerCase();
+      if (txt === "female") sample[f] = 0;
+      else if (txt === "male") sample[f] = 1;
+      else {
+        const n = Number(String(raw).replace(",", "."));
+        if (Number.isFinite(n)) sample[f] = n;
+      }
       continue;
     }
     const n = Number(String(raw).replace(",", "."));
@@ -491,6 +562,29 @@ function renderCsvResults(results) {
     const r = results[i];
     const tr = document.createElement("tr");
 
+    if (r?.combined && r?.results) {
+      const ar = r.results.anemia || {};
+      const dr = r.results.diabetes || {};
+      const statusText = `${ar.status || "-"} / ${dr.status || "-"}`;
+      const classText = [
+        ar?.result ? `Anemia: ${ar.result.predictedClass.name}` : `Anemia: -`,
+        dr?.result ? `Diabetes: ${dr.result.predictedClass.name}` : `Diabetes: -`,
+      ].join(" | ");
+      const confText = [
+        ar?.result ? `A:${Number(ar.result.probability).toFixed(3)}` : "A:-",
+        dr?.result ? `D:${Number(dr.result.probability).toFixed(3)}` : "D:-",
+      ].join(" | ");
+
+      tr.innerHTML = `
+        <td>${i + 1}</td>
+        <td>${statusText}</td>
+        <td><strong>${classText}</strong></td>
+        <td>${confText}</td>
+      `;
+      csvTbody.appendChild(tr);
+      continue;
+    }
+
     tr.innerHTML = `
       <td>${i + 1}</td>
       <td>${diagnosisBadge(r)}</td>
@@ -508,6 +602,26 @@ function toCsv(rows) {
     if (/[",\n\r;]/.test(t)) return `"${t.replaceAll('"', '""')}"`;
     return t;
   };
+
+  if (rows.length > 0 && rows[0]?.combined) {
+    const headers = ["row", "anemia_status", "anemia_class", "anemia_probability", "diabetes_status", "diabetes_class", "diabetes_probability"];
+    const lines = [headers.join(",")];
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i] || {};
+      const ar = r.results?.anemia || {};
+      const dr = r.results?.diabetes || {};
+      lines.push([
+        esc(i + 1),
+        esc(ar.status || ""),
+        esc(ar.result?.predictedClass?.name || ""),
+        esc(ar.result?.probability ?? ""),
+        esc(dr.status || ""),
+        esc(dr.result?.predictedClass?.name || ""),
+        esc(dr.result?.probability ?? ""),
+      ].join(","));
+    }
+    return lines.join("\n");
+  }
 
   const headers = ["row", "needs_attention", "class", "probability"];
   const lines = [headers.join(",")];
@@ -591,8 +705,13 @@ btnPredictManual.addEventListener("click", async () => {
       res = await predictOne(sample);
     }
     manualResult.hidden = false;
-    renderResultCard(manualResult, res);
-    renderGradcamMaps(res.explanations);
+    if (isCombinedModel()) {
+      renderCombinedResult(manualResult, res);
+      renderGradcamMaps([]);
+    } else {
+      renderResultCard(manualResult, res);
+      renderGradcamMaps(res.explanations);
+    }
   } catch (e) {
     console.error(e);
     alert(e.message || "Make sure the model is connected first.");
@@ -771,7 +890,7 @@ btnPredictCsv.addEventListener("click", async () => {
 btnDownloadResults.addEventListener("click", () => {
   if (!lastCsvResults) return;
   const csv = toCsv(lastCsvResults);
-  downloadText("anemia_results.csv", csv);
+  downloadText(isCombinedModel() ? "combined_results.csv" : "anemia_results.csv", csv);
 });
 
 // Init

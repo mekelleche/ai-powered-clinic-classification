@@ -11,17 +11,27 @@ from api import create_multi_model_api
 REPO_ROOT = Path(__file__).resolve().parent
 WEB_ROOT = REPO_ROOT / "web"
 MODEL_CONFIGS = {
+    "combined": {
+        "title": "Anemia + Diabetes Combined",
+        "description": "Enter one patient profile and run both anemia and diabetes models together.",
+        "supports_ocr": True,
+        "type": "combined",
+        "models": ["anemia", "diabetes"],
+    },
     "anemia": {
         "path": REPO_ROOT / "model" / "anemia_model.joblib",
         "title": "Anemia Classifier",
         "description": "Predicts anemia category from CBC and nutrition markers.",
         "supports_ocr": True,
+        "internal": True,
+        "optional_features": ["FERRITTE", "FOLATE", "B12", "GENDER", "Sex", "Age", "age", "gender"],
     },
     "diabetes": {
         "path": REPO_ROOT / "model" / "diabetes_model_xgboost.joblib",
         "title": "Diabetes Status Classifier",
         "description": "Predicts diabetes risk (no diabetes vs diabetes) from health indicators.",
         "supports_ocr": True,
+        "internal": True,
     },
     "leukemia": {
         "path": REPO_ROOT / "lekumiai_model",
@@ -141,13 +151,12 @@ def main():
     parser.add_argument("--port", type=int, default=8000)
     args = parser.parse_args()
 
-    model_paths = {
-        key: {
-            **cfg,
-            "path": resolve_from_repo(Path(cfg["path"])),
-        }
-        for key, cfg in MODEL_CONFIGS.items()
-    }
+    model_paths = {}
+    for key, cfg in MODEL_CONFIGS.items():
+        item = {**cfg}
+        if "path" in item:
+            item["path"] = resolve_from_repo(Path(item["path"]))
+        model_paths[key] = item
     AppHandler.api = create_multi_model_api(model_paths=model_paths)
 
     server = ThreadingHTTPServer((args.host, args.port), AppHandler)

@@ -736,6 +736,8 @@ def create_api(model_path: Path):
 def create_multi_model_api(model_paths: dict[str, dict]):
     services = {}
     for key, cfg in model_paths.items():
+        if cfg.get("type") == "combined":
+            continue
         if cfg.get("type") == "leukemia_image":
             services[key] = LeukemiaImageService(model_dir=cfg["path"])
         else:
@@ -745,6 +747,124 @@ def create_multi_model_api(model_paths: dict[str, dict]):
             )
 
     class Api:
+        def _combined_cfg(self, model_key: str):
+            cfg = model_paths.get(model_key)
+            if cfg and cfg.get("type") == "combined":
+                return cfg
+            return None
+
+        @staticmethod
+        def _has_value(v):
+            if v is None:
+                return False
+            if isinstance(v, str):
+                return v.strip() != ""
+            return True
+
+        def _combined_parts(self, model_key: str):
+            cfg = self._combined_cfg(model_key)
+            if not cfg:
+                raise KeyError(f"Unknown combined model: {model_key}")
+            keys = [k for k in cfg.get("models", []) if k in services]
+            if not keys:
+                raise RuntimeError(f"Combined model '{model_key}' has no valid sub-models.")
+            return keys
+
+        def _combined_features(self, model_keys):
+            infos = {k: services[k].get_info() for k in model_keys}
+            feature_sets = {k: list(infos[k].get("features", [])) for k in model_keys}
+            shared_aliases = {
+                "age": ["age", "Age"],
+                "gender": ["gender", "GENDER", "Sex"],
+            }
+            shared = set()
+            for canonical, aliases in shared_aliases.items():
+                if any(any(a in feature_sets[k] for a in aliases) for k in model_keys):
+                    shared.add(canonical)
+
+            model_shared_features = {}
+            for mk in model_keys:
+                model_shared_features[mk] = set()
+                for canonical in shared:
+                    for alias in shared_aliases[canonical]:
+                        if alias in feature_sets[mk]:
+                            model_shared_features[mk].add(alias)
+
+            feature_to_shared = {}
+            for mk in model_keys:
+                feature_to_shared[mk] = {}
+                for f in model_shared_features[mk]:
+                    for canonical in shared:
+                        if f in shared_aliases[canonical]:
+                            feature_to_shared[mk][f] = canonical
+                            break
+            ordered = []
+            seen = set()
+            for k in model_keys:
+                for f in feature_sets[k]:
+                    if f not in seen:
+                        seen.add(f)
+                        ordered.append(f)
+            return infos, feature_sets, shared, ordered, model_shared_features, feature_to_shared, shared_aliases
+
+        def _predict_combined_one(self, model_key: str, sample):
+            model_keys = self._combined_parts(model_key)
+            infos, feature_sets, shared, _, model_shared_features, feature_to_shared, shared_aliases = self._combined_features(model_keys)
+            sample = sample or {}
+            combined = {
+                "combined": True,
+                "sharedFeatures": sorted(shared),
+                "results": {},
+            }
+
+            for mk in model_keys:
+                features = feature_sets[mk]
+                specific = [f for f in features if f not in model_shared_features[mk]]
+                provided_features = [f for f in features if self._has_value(sample.get(f))]
+                specific_present = [f for f in provided_features if f in specific]
+
+                if len(specific_present) == 0:
+                    combined["results"][mk] = {
+                        "status": "skipped",
+                        "reason": "no_model_specific_features_provided",
+                        "missingFeatures": [],
+                        "result": None,
+                        "title": infos[mk].get("title", mk),
+                    }
+                    continue
+
+                missing = []
+                optional = set(model_paths.get(mk, {}).get("optional_features", []))
+                for f in features:
+                    if f in optional:
+                        continue
+                    if self._has_value(sample.get(f)):
+                        continue
+                    canonical = feature_to_shared[mk].get(f)
+                    if canonical:
+                        if any(self._has_value(sample.get(alias)) for alias in shared_aliases[canonical]):
+                            continue
+                    missing.append(f)
+                if missing:
+                    combined["results"][mk] = {
+                        "status": "incomplete",
+                        "reason": "missing_features",
+                        "missingFeatures": missing,
+                        "result": None,
+                        "title": infos[mk].get("title", mk),
+                    }
+                    continue
+
+                combined["results"][mk] = {
+                    "status": "ok",
+                    "reason": "",
+                    "missingFeatures": [],
+                    "result": services[mk].predict_one(sample),
+                    "title": infos[mk].get("title", mk),
+                }
+
+            return combined
+
         def _service(self, model_key: str):
             if model_key not in services:
                 raise KeyError(f"Unknown model: {model_key}")
@@ -753,8 +873,21 @@ def create_multi_model_api(model_paths: dict[str, dict]):
         def list_models(self):
             models = []
             for key, cfg in model_paths.items():
-                service = self._service(key)
-                info = service.get_info()
+                if cfg.get("internal"):
+                    continue
+                if cfg.get("type") == "combined":
+                    model_keys = self._combined_parts(key)
+                    _infos, _feature_sets, _shared, ordered, _a, _b, _c = self._combined_features(model_keys)
+                    info = {
+                        "title": cfg.get("title", key),
+                        "description": cfg.get("description", ""),
+                        "supportsImagePrediction": False,
+                    }
+                    features = ordered
+                else:
+                    service = self._service(key)
+                    info = service.get_info()
+                    features = info.get("features", [])
                 models.append(
                     {
                         "key": key,
@@ -762,20 +895,54 @@ def create_multi_model_api(model_paths: dict[str, dict]):
                         "description": cfg.get("description", info.get("description", "")),
                         "supportsImageOcr": cfg.get("supports_ocr", False),
                         "supportsImagePrediction": info.get("supportsImagePrediction", False),
+                        "features": features,
                     }
                 )
             return models
 
         def get_model_info(self, model_key: str):
+            combined_cfg = self._combined_cfg(model_key)
+            if combined_cfg:
+                model_keys = self._combined_parts(model_key)
+                infos, _feature_sets, shared, ordered, _a, _b, _c = self._combined_features(model_keys)
+                classes = []
+                for mk in model_keys:
+                    classes.extend(infos[mk].get("classes", []))
+                return {
+                    "features": ordered,
+                    "classes": classes,
+                    "title": combined_cfg.get("title", model_key),
+                    "description": combined_cfg.get("description", ""),
+                    "supportsImageOcr": combined_cfg.get("supports_ocr", False),
+                    "supportsImagePrediction": False,
+                    "combined": True,
+                    "subModels": model_keys,
+                    "sharedFeatures": sorted(shared),
+                }
             return self._service(model_key).get_info()
 
         def predict(self, model_key: str, sample):
+            if self._combined_cfg(model_key):
+                return self._predict_combined_one(model_key, sample)
             return self._service(model_key).predict_one(sample)
 
         def predict_batch(self, model_key: str, samples):
+            if self._combined_cfg(model_key):
+                return [self._predict_combined_one(model_key, s) for s in (samples or [])]
             return self._service(model_key).predict_batch(samples)
 
         def extract_from_image(self, model_key: str, b64):
+            combined_cfg = self._combined_cfg(model_key)
+            if combined_cfg:
+                merged = {}
+                for mk in self._combined_parts(model_key):
+                    try:
+                        data = services[mk].extract_from_image(b64)
+                        if isinstance(data, dict):
+                            merged.update(data)
+                    except Exception:
+                        continue
+                return merged
             return self._service(model_key).extract_from_image(b64)
 
         def predict_image(self, model_key: str, b64):

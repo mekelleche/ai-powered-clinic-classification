@@ -46,7 +46,7 @@
         <div class="hero-icon">🩸</div>
         <div class="hero-text">
           <h1 id="heroTitle">AI-Powered <span>Clinical Classification</span></h1>
-          <p id="heroDescription">Switch between anemia, diabetes, and leukemia prediction, enter values manually, upload a CSV, or analyze a blood smear image.</p>
+          <p id="heroDescription">Run combined anemia + diabetes prediction from one patient input, or switch to leukemia image analysis.</p>
         </div>
       </div>
 
@@ -149,22 +149,17 @@
           <!-- FNS form fieldsets -->
           <div id="manualForm"></div>
 
-          <!-- Prediction result -->
-          <div id="manualResult" class="result" hidden></div>
         </section>
 
         <!-- ── Right: CSV Upload + Batch ────────────────────── -->
         <div style="display:flex; flex-direction:column; gap: 22px;">
 
-          <section id="gradcamSection" class="card" hidden>
+          <section class="card">
             <div class="card-header">
-              <h2><span class="icon">🧠</span>Model Focus Maps</h2>
-              <span class="pill">Grad-CAM</span>
+              <h2><span class="icon">🧾</span>Prediction Results</h2>
+              <span class="pill">Live Output</span>
             </div>
-            <div id="gradcamEmpty" class="muted">
-              Run leukemia image analysis to view the regions used by each model.
-            </div>
-            <div id="gradcamGrid" class="gradcam-grid"></div>
+            <div id="manualResult" class="result" hidden></div>
           </section>
 
           <!-- CSV Upload -->
@@ -208,6 +203,17 @@
                 <tbody id="csvTbody"></tbody>
               </table>
             </div>
+          </section>
+
+          <section id="gradcamSection" class="card" hidden>
+            <div class="card-header">
+              <h2><span class="icon">🧠</span>Model Focus Maps</h2>
+              <span class="pill">Grad-CAM</span>
+            </div>
+            <div id="gradcamEmpty" class="muted">
+              Run leukemia image analysis to view the regions used by each model.
+            </div>
+            <div id="gradcamGrid" class="gradcam-grid"></div>
           </section>
 
           <!-- Batch List -->
