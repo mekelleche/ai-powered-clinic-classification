@@ -19,7 +19,7 @@ MODEL_CONFIGS = {
         "models": ["anemia", "diabetes"],
     },
     "anemia": {
-        "path": REPO_ROOT / "model" / "anemia_model.joblib",
+        "path": REPO_ROOT / "model" / "anemia_model_v2.joblib",
         "title": "Anemia Classifier",
         "description": "Predicts anemia category from CBC and nutrition markers.",
         "supports_ocr": True,
@@ -27,7 +27,7 @@ MODEL_CONFIGS = {
         "optional_features": ["FERRITTE", "FOLATE", "B12", "GENDER", "Sex", "Age", "age", "gender"],
     },
     "diabetes": {
-        "path": REPO_ROOT / "model" / "diabetes_model_xgboost.joblib",
+        "path": REPO_ROOT / "model" / "diabetes_model_xgboost_v2.joblib",
         "title": "Diabetes Status Classifier",
         "description": "Predicts diabetes risk (no diabetes vs diabetes) from health indicators.",
         "supports_ocr": True,

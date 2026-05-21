@@ -223,37 +223,7 @@ class ModelService:
             self.load()
 
         df = self._df_from_samples(samples)
-        pipeline = self.bundle.get("pipeline")
-
-        if pipeline is not None:
-            proba = pipeline.predict_proba(df)
-            class_values = [int(c) for c in pipeline.classes_]
-        else:
-            model = self.bundle.get("model")
-            imputer = self.bundle.get("imputer")
-            scaler = self.bundle.get("scaler")
-            if model is None or imputer is None or scaler is None:
-                raise RuntimeError(
-                    "Model bundle is missing 'pipeline' or ('model', 'imputer', 'scaler')."
-                )
-            try:
-                x_imp = imputer.transform(df)
-            except Exception:
-                # Fallback for cross-version sklearn pickle incompatibilities.
-                x_imp = df.apply(pd.to_numeric, errors="coerce").to_numpy(dtype=float)
-                if np.isnan(x_imp).any():
-                    col_medians = np.nanmedian(x_imp, axis=0)
-                    col_medians = np.where(np.isnan(col_medians), 0.0, col_medians)
-                    nan_mask = np.isnan(x_imp)
-                    x_imp[nan_mask] = np.take(col_medians, np.where(nan_mask)[1])
-
-            try:
-                x_scaled = scaler.transform(x_imp)
-            except Exception:
-                x_scaled = x_imp
-
-            proba = model.predict_proba(x_scaled)
-            class_values = [int(c) for c in model.classes_]
+        proba, class_values = self._predict_proba(df)
 
         # Prefer labels saved during training
         saved = {int(c["value"]): str(c["name"]) for c in self.bundle.get("classes", [])}
@@ -282,6 +252,13 @@ class ModelService:
             value = class_values[best_i]
             predicted_class = {"value": value, "name": value_to_name[value]}
             negative_value = int(self.bundle.get("negativeClassValue", 0))
+            explanation = self._explain_sample(
+                df=df,
+                row_index=i,
+                predicted_class_value=value,
+                predicted_probability=float(p[best_i]),
+                value_to_name=value_to_name,
+            )
             results.append(
                 {
                     "anemia": value != 0,
@@ -296,12 +273,210 @@ class ModelService:
                         }
                         for j in range(len(class_values))
                     ],
+                    "explanation": explanation,
                 }
             )
         return results
 
     def predict_one(self, sample):
         return self.predict_batch([sample])[0]
+
+    def _predict_proba(self, df: pd.DataFrame):
+        pipeline = self.bundle.get("pipeline")
+        if pipeline is not None:
+            proba = pipeline.predict_proba(df)
+            return proba, [int(c) for c in pipeline.classes_]
+
+        model = self.bundle.get("model")
+        if model is None:
+            raise RuntimeError(
+                "Model bundle is missing 'pipeline' or ('model', 'imputer', 'scaler')."
+            )
+        x_scaled = self._transform_features(df)
+
+        proba = model.predict_proba(x_scaled)
+        return proba, [int(c) for c in model.classes_]
+
+    def _transform_features(self, df: pd.DataFrame):
+        imputer = self.bundle.get("imputer")
+        scaler = self.bundle.get("scaler")
+        if imputer is None or scaler is None:
+            raise RuntimeError(
+                "Model bundle is missing preprocessors ('imputer', 'scaler')."
+            )
+        try:
+            x_imp = imputer.transform(df)
+        except Exception:
+            # Fallback for cross-version sklearn pickle incompatibilities.
+            x_imp = df.apply(pd.to_numeric, errors="coerce").to_numpy(dtype=float)
+            if np.isnan(x_imp).any():
+                col_medians = np.nanmedian(x_imp, axis=0)
+                col_medians = np.where(np.isnan(col_medians), 0.0, col_medians)
+                nan_mask = np.isnan(x_imp)
+                x_imp[nan_mask] = np.take(col_medians, np.where(nan_mask)[1])
+        try:
+            x_scaled = scaler.transform(x_imp)
+        except Exception:
+            x_scaled = x_imp
+        return x_scaled
+
+    def _explain_sample(self, df, row_index, predicted_class_value, predicted_probability, value_to_name):
+        model = self.bundle.get("model")
+        if model is not None and hasattr(model, "get_booster"):
+            shap_like = self._explain_sample_xgboost_contribs(
+                df=df,
+                row_index=row_index,
+                predicted_class_value=predicted_class_value,
+                predicted_probability=predicted_probability,
+                value_to_name=value_to_name,
+            )
+            if shap_like is not None:
+                return shap_like
+
+        features = list(self.bundle.get("features", []))
+        if not features:
+            return {"method": "feature_ablation", "targetClass": str(predicted_class_value), "topContributors": []}
+
+        try:
+            row = df.iloc[[row_index]].copy()
+            base_proba, class_values = self._predict_proba(row)
+            if len(class_values) == 0:
+                return {"method": "feature_ablation", "targetClass": str(predicted_class_value), "topContributors": []}
+            if predicted_class_value in class_values:
+                target_idx = class_values.index(predicted_class_value)
+            else:
+                target_idx = int(np.argmax(base_proba[0]))
+            target_name = value_to_name.get(class_values[target_idx], f"Class_{class_values[target_idx]}")
+
+            contributions = []
+            for f in features:
+                val = row.iloc[0][f]
+                if pd.isna(val):
+                    continue
+
+                ablated = row.copy()
+                ablated.at[ablated.index[0], f] = np.nan
+                alt_proba, _ = self._predict_proba(ablated)
+                delta = float(base_proba[0][target_idx] - alt_proba[0][target_idx])
+                if abs(delta) < 1e-9:
+                    continue
+
+                raw_value = val.item() if hasattr(val, "item") else val
+                try:
+                    value_for_json = float(raw_value)
+                except Exception:
+                    value_for_json = str(raw_value)
+                direction = "supports_prediction" if delta > 0 else "opposes_prediction"
+
+                contributions.append(
+                    {
+                        "feature": f,
+                        "value": value_for_json,
+                        "impact": delta,
+                        "direction": direction,
+                        "text": self._feature_reason_text(
+                            feature=f,
+                            value=value_for_json,
+                            impact=delta,
+                            target_name=target_name,
+                        ),
+                    }
+                )
+
+            contributions.sort(key=lambda x: abs(x["impact"]), reverse=True)
+            top = contributions[:5]
+            return {
+                "method": "feature_ablation",
+                "targetClass": target_name,
+                "targetProbability": float(predicted_probability),
+                "topContributors": top,
+            }
+        except Exception:
+            return {
+                "method": "feature_ablation",
+                "targetClass": str(predicted_class_value),
+                "targetProbability": float(predicted_probability),
+                "topContributors": [],
+            }
+
+    def _explain_sample_xgboost_contribs(self, df, row_index, predicted_class_value, predicted_probability, value_to_name):
+        try:
+            model = self.bundle.get("model")
+            features = list(self.bundle.get("features", []))
+            if model is None or not features:
+                return None
+
+            row = df.iloc[[row_index]].copy()
+            x_scaled = self._transform_features(row)
+
+            import xgboost as xgb
+
+            dmat = xgb.DMatrix(x_scaled, feature_names=features)
+            contribs = model.get_booster().predict(dmat, pred_contribs=True)
+            if contribs is None or len(contribs) == 0:
+                return None
+
+            # Binary xgboost usually returns (n_samples, n_features + 1) with bias term last.
+            row_contrib = contribs[0]
+            if getattr(row_contrib, "ndim", 1) != 1:
+                return None
+            if len(row_contrib) < len(features):
+                return None
+
+            class_values = [int(c) for c in getattr(model, "classes_", [0, 1])]
+            target_name = value_to_name.get(int(predicted_class_value), str(predicted_class_value))
+            positive_class = class_values[-1] if class_values else 1
+            sign = 1.0 if int(predicted_class_value) == int(positive_class) else -1.0
+
+            contributions = []
+            for i, f in enumerate(features):
+                val = row.iloc[0][f]
+                if pd.isna(val):
+                    continue
+                raw = float(row_contrib[i])
+                impact = sign * raw
+                if abs(impact) < 1e-9:
+                    continue
+                raw_value = val.item() if hasattr(val, "item") else val
+                try:
+                    value_for_json = float(raw_value)
+                except Exception:
+                    value_for_json = str(raw_value)
+                direction = "supports_prediction" if impact > 0 else "opposes_prediction"
+                contributions.append(
+                    {
+                        "feature": f,
+                        "value": value_for_json,
+                        "impact": float(impact),
+                        "direction": direction,
+                        "text": self._feature_reason_text(
+                            feature=f,
+                            value=value_for_json,
+                            impact=impact,
+                            target_name=target_name,
+                        ),
+                    }
+                )
+
+            contributions.sort(key=lambda x: abs(x["impact"]), reverse=True)
+            return {
+                "method": "xgboost_tree_shap",
+                "targetClass": target_name,
+                "targetProbability": float(predicted_probability),
+                "topContributors": contributions[:5],
+            }
+        except Exception:
+            return None
+
+    @staticmethod
+    def _feature_reason_text(feature, value, impact, target_name):
+        try:
+            val_txt = f"{float(value):.3f}"
+        except Exception:
+            val_txt = str(value)
+        if impact > 0:
+            return f"{feature}={val_txt} increased confidence for {target_name}."
+        return f"{feature}={val_txt} lowered confidence for {target_name}."
 
 
 class LeukemiaImageService:
@@ -334,7 +509,7 @@ class LeukemiaImageService:
         if self.bundle is not None:
             return
 
-        required = ["best_validator.pth", "best_b5.pth", "best_b4.pth"]
+        required = ["best_validator.pth", "best_b5.pth", "best_b4.pth", "best_b3.pth"]
         missing = [name for name in required if not (self.model_dir / name).exists()]
         if missing:
             raise FileNotFoundError(
@@ -402,11 +577,11 @@ class LeukemiaImageService:
                 feat = feat * self.attention(feat)
                 return self.head(feat)
 
-        class LeukemiaClassifierB4(nn.Module):
-            def __init__(self):
+        class LeukemiaClassifierLite(nn.Module):
+            def __init__(self, backbone_name: str = "efficientnet_b4"):
                 super().__init__()
                 self.backbone = timm.create_model(
-                    "efficientnet_b4",
+                    backbone_name,
                     pretrained=False,
                     num_classes=0,
                     global_pool="avg",
@@ -422,17 +597,62 @@ class LeukemiaImageService:
             def forward(self, x):
                 return self.head(self.backbone(x))
 
+        class GeM(nn.Module):
+            def __init__(self, p=3.0, eps=1e-6):
+                super().__init__()
+                self.p = nn.Parameter(torch.ones(1) * p)
+                self.eps = eps
+
+            def forward(self, x):
+                x = x.clamp(min=self.eps).pow(self.p)
+                x = torch.nn.functional.avg_pool2d(x, (x.size(-2), x.size(-1)))
+                return x.pow(1.0 / self.p).flatten(1)
+
+        class LeukemiaClassifierB3(nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.backbone = timm.create_model(
+                    "efficientnet_b3",
+                    pretrained=False,
+                    num_classes=0,
+                    global_pool="",
+                    drop_rate=0.4,
+                )
+                f = self.backbone.num_features
+                self.gem = GeM()
+                self.attention = nn.Sequential(
+                    nn.Linear(f, f // 8),
+                    nn.ReLU(inplace=True),
+                    nn.Linear(f // 8, f),
+                    nn.Sigmoid(),
+                )
+                self.head = nn.Sequential(
+                    nn.Linear(f, 512), nn.BatchNorm1d(512), nn.SiLU(), nn.Dropout(0.45),
+                    nn.Linear(512, 256), nn.BatchNorm1d(256), nn.SiLU(), nn.Dropout(0.35),
+                    nn.Linear(256, 64), nn.BatchNorm1d(64), nn.SiLU(), nn.Dropout(0.25),
+                    nn.Linear(64, 1),
+                )
+
+            def forward(self, x):
+                feat_map = self.backbone(x)
+                feat = self.gem(feat_map)
+                feat = feat * self.attention(feat)
+                return self.head(feat)
+
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         validator = ImageValidator().to(device)
-        model_b5 = LeukemiaClassifier().to(device)
-        model_b4 = LeukemiaClassifierB4().to(device)
+        model_b5 = LeukemiaClassifier("efficientnet_b5").to(device)
+        model_b4 = LeukemiaClassifierLite("efficientnet_b4").to(device)
+        model_b3 = LeukemiaClassifierB3().to(device)
 
         validator.load_state_dict(self._torch_load(torch, self.model_dir / "best_validator.pth", device))
         model_b5.load_state_dict(self._torch_load(torch, self.model_dir / "best_b5.pth", device))
         model_b4.load_state_dict(self._torch_load(torch, self.model_dir / "best_b4.pth", device))
+        model_b3.load_state_dict(self._torch_load(torch, self.model_dir / "best_b3.pth", device))
         validator.eval()
         model_b5.eval()
         model_b4.eval()
+        model_b3.eval()
 
         self.bundle = {
             "torch": torch,
@@ -440,6 +660,7 @@ class LeukemiaImageService:
             "validator": validator,
             "model_b5": model_b5,
             "model_b4": model_b4,
+            "model_b3": model_b3,
         }
 
     @staticmethod
@@ -594,7 +815,7 @@ class LeukemiaImageService:
         out.save(buf, format="JPEG", quality=88)
         return "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode("ascii")
 
-    def _build_explanations(self, image, preprocessed, validator, model_b5, model_b4, include_classifiers=True):
+    def _build_explanations(self, image, preprocessed, validator, model_b5, model_b4, model_b3, include_classifiers=True):
         from PIL import Image
 
         explanations = []
@@ -613,7 +834,12 @@ class LeukemiaImageService:
 
         if include_classifiers:
             preprocessed_image = Image.fromarray(preprocessed)
-            for model, title in [(model_b5, "EfficientNet-B5"), (model_b4, "EfficientNet-B4")]:
+            classifier_models = [
+                (model_b5, "EfficientNet-B5"),
+                (model_b4, "EfficientNet-B4"),
+                (model_b3, "EfficientNet-B3"),
+            ]
+            for model, title in classifier_models:
                 try:
                     explanations.append(
                         self._gradcam_overlay(
@@ -635,6 +861,7 @@ class LeukemiaImageService:
         validator = self.bundle["validator"]
         model_b5 = self.bundle["model_b5"]
         model_b4 = self.bundle["model_b4"]
+        model_b3 = self.bundle["model_b3"]
 
         image = self._image_from_b64(b64)
         img_np = np.asarray(image)
@@ -650,6 +877,7 @@ class LeukemiaImageService:
                 validator=validator,
                 model_b5=model_b5,
                 model_b4=model_b4,
+                model_b3=model_b3,
                 include_classifiers=False,
             )
             return self._format_result(
@@ -667,8 +895,9 @@ class LeukemiaImageService:
         preprocessed = self._preprocess_blood(img_np)
         prob_b5 = self._predict_tta(model_b5, preprocessed)
         prob_b4 = self._predict_tta(model_b4, preprocessed)
-        probability = 0.60 * prob_b5 + 0.40 * prob_b4
-        explanations = self._build_explanations(image, preprocessed, validator, model_b5, model_b4)
+        prob_b3 = self._predict_tta(model_b3, preprocessed)
+        probability = 0.50 * prob_b5 + 0.30 * prob_b4 + 0.20 * prob_b3
+        explanations = self._build_explanations(image, preprocessed, validator, model_b5, model_b4, model_b3)
 
         if self.UNC_LOW < probability < self.UNC_HIGH:
             value, name, has_condition = 2, "Uncertain", True
@@ -695,6 +924,8 @@ class LeukemiaImageService:
                 "bloodSmearProbability": valid_prob,
                 "probB5": prob_b5,
                 "probB4": prob_b4,
+                "probB3": prob_b3,
+                "usesB3": True,
                 "quality": quality,
             },
             explanations=explanations,

@@ -329,6 +329,7 @@ function renderResultCard(container, res) {
     <div class="meta">Probabilities: ${(res.probabilities || [])
       .map((p) => `${p.name}:${Number(p.p).toFixed(3)}`)
       .join(" • ")}</div>
+    ${renderFeatureExplanation(res.explanation)}
     ${res.message ? `<div class="meta">${res.message}</div>` : ""}
     ${renderResultDetails(res)}
   `;
@@ -341,8 +342,10 @@ function renderCombinedResult(container, res) {
     const title = item?.title || key;
     if (item?.status === "ok" && item?.result) {
       const r = item.result;
+      const explanation = renderFeatureExplanation(r.explanation);
       parts.push(`
         <div class="meta"><strong>${title}</strong>: ${r.predictedClass.name} (p=${Number(r.probability).toFixed(3)})</div>
+        ${explanation}
       `);
     } else if (item?.status === "incomplete") {
       parts.push(`
@@ -362,6 +365,20 @@ function renderCombinedResult(container, res) {
   `;
 }
 
+function renderFeatureExplanation(explanation) {
+  const top = explanation?.topContributors || [];
+  if (!Array.isArray(top) || top.length === 0) return "";
+  const target = explanation?.targetClass ? ` for <strong>${explanation.targetClass}</strong>` : "";
+  const parts = top.map((x) => {
+    if (x?.text) return x.text;
+    const sign = Number(x.impact) >= 0 ? "+" : "";
+    const valueNum = Number(x.value);
+    const valueText = Number.isFinite(valueNum) ? valueNum.toFixed(3) : String(x.value);
+    return `${x.feature}=${valueText} (${sign}${Number(x.impact).toFixed(3)})`;
+  });
+  return `<div class="meta">Why this prediction${target}: ${parts.join(" ")}</div>`;
+}
+
 function renderResultDetails(res) {
   const d = res.details || {};
   const parts = [];
@@ -370,6 +387,7 @@ function renderResultDetails(res) {
   }
   if (Number.isFinite(d.probB5)) parts.push(`B5:${Number(d.probB5).toFixed(3)}`);
   if (Number.isFinite(d.probB4)) parts.push(`B4:${Number(d.probB4).toFixed(3)}`);
+  if (Number.isFinite(d.probB3)) parts.push(`B3:${Number(d.probB3).toFixed(3)}`);
   if (d.quality) {
     parts.push(`brightness:${Number(d.quality.brightness).toFixed(0)}`);
     parts.push(`sharpness:${Number(d.quality.sharpness).toFixed(0)}`);
